@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>audio to text</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
+    <link
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh"
+      crossorigin="anonymous"
+    />
+    <script src="https://cdn.rawgit.com/mattdiamond/Recorderjs/08e7abd9/dist/recorder.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="http://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/data.js"></script>
+    <script src="https://code.highcharts.com/modules/drilldown.js"></script>
+    <script src="https://code.highcharts.com/modules/exporting.js"></script>
+    <script src="https://code.highcharts.com/modules/export-data.js"></script>
+    <script src="https://code.highcharts.com/modules/accessibility.js"></script>
+   
+  </head>
+
+  <body>
+    
+    <header>
+      <nav class="navbar navbar-light bg-light">
+        <a class="navbar-brand" href="#">Pollmonk audio to text demo:</a>
+      </nav>
+    </header>
+
+    <div class="container">
+      <div class="row">
+        <div class="col-sm">
+          <div id="controls" class="mt-4">
+            
+            <legend>Step 1:</legend><br>
+            <p>1).Did lockdown affect economy?<br>a). yes <br>b). no</p><br>
+            
+            <button class="btn btn-primary mr-2" id="recordButton">
+              Record
+            </button>
+          </div>
+          <div id="formats" class="mt-4">
+            <p class="mt-1"><strong>Recordings:</strong></p>
+          </div>
+          <div
+            style="display: flex; flex-direction: row;"
+            class="mt-1"
+            id="recordingsList"
+          ></div>
+          <div class="form-group mt-3">
+            <legend>Step 2:</legend>
+            <!-- <button
+              type="button"
+              class="btn btn-success my-3"
+              value="submit"
+              onclick="fetchUserData()"
+            >
+              Convert Audio To text
+            </button> -->
+            <br />
+
+            <p class="mt-1"><strong>Result:</strong></p>
+            <textarea class="form-control" id="result" rows="5"></textarea
+            ><br />
+          </div>
+        </div>
+        <div class="col-sm">
+          <div class="px-4 mt-4">
+            <legend>Step 3:</legend>
+            <div class="form-group">
+              <p class="mt-1">
+                <legend id="AnalysisHigestValue" style="background-color: tomato; color: white;"
+                 >Sentiment Analysis:</legend>
+              </p>
+
+              <div class="col-12" id="barGraph" style="height: 400px;"></div>
+            </div>
+          </div>
+          <!-- <h4 id='AnalysisHigestValue' ></h4> -->
+          <textarea
+            class="form-control"
+            id="result2"
+            rows="5"
+            readonly
+          ></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- </form> -->
+  </body>
+  <script type="text/javascript">
+    document.getElementById("result2").style.visibility = "hidden";
+    document.getElementById("result").style.visibility = "hidden";
+    URL = window.URL || window.webkitURL;
+
+    let fileDatademo;
+
+    var gumStream; //stream from getUserMedia()
+    var rec; //Recorder.js object
+    var input; //MediaStreamAudioSourceNode we'll be recording
+
+    // shim for AudioContext when it's not avb.
+    var AudioContext = window.AudioContext || window.webkitAudioContext;
+    var audioContext; //audio context to help us record
+
+    var recordButton = document.getElementById("recordButton");
+    //var stopButton = document.getElementById("stopButton");
+
+    //add events to those 2 buttons
+    recordButton.addEventListener("click", startRecording);
+    //stopButton.addEventListener("click", stopRecording)
+    function stopRecording() {
+      console.log("stopButton clicked");
+
+      //disable the stop button, enable the record too allow for new recordings
+      //stopButton.disabled = true;
+      recordButton.disabled = false;
+
+      //reset button just in case the recording is stopped while paused
+
+      //tell the recorder to stop the recording
+      rec.stop();
+
+      //stop microphone access
+      gumStream.getAudioTracks()[0].stop();
+
+      //create the wav blob and pass it on to createDownloadLink
+      rec.exportWAV(createDownloadLink);
+
+      //alert(rec.exportWAV(createDownloadLink));
+    }
+
+    function createDownloadLink(blob) {
+      var url = URL.createObjectURL(blob);
+      console.log(url)
+      var au = document.createElement("audio");
+      var li = document.createElement("div");
+      var link = document.createElement("a");
+
+      var audio = new File([""], "audiototext");
+      var br = document.createElement("br");
+
+      //name of .wav file to use during upload and download (without extendion)
+      var filename = 'recordedfile'+ new Date().getTime()
+      var file = new File([blob], `${filename}.wav`, {
+        type: "audio/wav",
+        lastModified: Date.now(),
+      });
+      console.log(file)
+
+      fileDatademo = file;
+      au.controls = true;
+      au.src = url;
+      console.log(au)
+      li.appendChild(au);
+      recordingsList.appendChild(li);
+      fetchUserData(fileDatademo);
+    }
+
+    function startRecording(){
+      console.log("recordButton clicked");
+      var constraints = { audio: true, video: false };
+      recordButton.disabled = true;
+      recordButton.innerText = 'Recording...'
+      //stopButton.disabled = false;
+
+      navigator.mediaDevices
+        .getUserMedia(constraints)
+        .then(function (stream) {
+          console.log(
+            "getUserMedia() success, stream created, initializing Recorder.js ..."
+          );
+
+          audioContext = new AudioContext();
+          /*  assign to gumStream for later use  */
+          gumStream = stream;
+
+          /* use the stream */
+          input = audioContext.createMediaStreamSource(stream);
+          rec = new Recorder(input, { numChannels: 1 });
+
+          //start the recording process
+          rec.record();
+        })
+        .catch(function (err) {
+          //enable the record button if getUserMedia() fails
+          recordButton.disabled = false;
+          //stopButton.disabled = true;
+          recordButton.innerText = 'Record'
+        });
+
+        setTimeout(() => {
+          stopRecording();
+          recordButton.innerText = 'Record'
+          
+        }, 5000);
+        
+    }
+    // Convert file to base64 string
+   function fileToBase64(fileDatademo){
+    return new Promise(resolve => {
+    var reader = new FileReader();
+    // Read file content on file loaded event
+    reader.onload = function(event) {
+      resolve(event.target.result);
+    };
+    
+    // Convert data to base64 
+    reader.readAsDataURL(fileDatademo);
+  });
+};
+// Ex
+
+    
+    function fetchUserData(fileDatademo) {
+      console.log(fileDatademo)
+      var data = new FormData();
+      // var encoded = base64.b64encode(fileDatademo.read());
+      // var reader = new FileReader();
+      
+      // reader.onload = function() {
+      // var base64String= reader.result; // data url
+      // console.log(base64String.length)
+      // }
+      // reader.readAsDataURL(fileDatademo); // converts the blob to base64 and calls onload
+      
+      data.append("myFile", fileDatademo);
+      
+      console.log(data)
+      //input.files[0]
+      fetch("/myform1", {
+        method: "POST",
+        body: data,
+      })
+    
+        .then((res) => {
+          return res.json();
+        })
+        .then((data) => {
+          document.getElementById("result").style.visibility = "visible";
+          document.getElementById("result").value = data.result;
+          document.getElementById("result2").style.visibility = "visible";
+          document.getElementById("result2").value = data.result2;
+          console.log({ data });
+          let valueArray = [];
+          valueArray.push(data.result1.pos);
+          valueArray.push(data.result1.neg);
+         // valueArray.push(data.result1.neu);
+
+          higestValue = Math.max(...valueArray);
+          if (data) {
+            var para = document.getElementById("AnalysisHigestValue");
+            if (data.result1.pos === higestValue) {
+              para.innerHTML = `Sentiment Analysis: Possitive ${higestValue} `;
+            } else if (data.result1.neg === higestValue) {
+              para.innerHTML = ` Sentiment Analysis: Negetive ${higestValue} `;
+            } //else if (data.result1.neu === higestValue) {
+              //para.innerHTML = ` Sentiment Analysis: Neutral ${higestValue} `;
+            //}
+          }
+          Highcharts.chart("barGraph", {
+            chart: {
+              type: "column",
+            },
+
+            title: {
+              text: "Visualising Sentiment Analysis",
+            },
+            xAxis: {
+              type: "category",
+              title: {
+                text: "",
+              },
+            },
+            yAxis: {
+              title: {
+                text: "Percentage",
+              },
+            },
+            series: [
+              {
+                name: "Visualizing Sentiment Analysis",
+                colorByPoint: true,
+                data: [
+                  {
+                    name: "Positive",
+                    y: data.result1.pos,
+                  },
+                  {
+                    name: "Neutral",
+                    y: data.result1.neu,
+                  },
+                  {
+                    name: "Negetive",
+                    y: data.result1.neg,
+                  },
+                  // {
+                  //   name: "Compound",
+                  //   y: data.result1.compound,
+                  // },
+                ],
+              },
+            ],
+          });
+        });
+      
+    }
+  </script>
+
+  <script
+    src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
+    integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n"
+    crossorigin="anonymous"
+  ></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+    integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
+    crossorigin="anonymous"
+  ></script>
+  <script
+    src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"
+    integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6"
+    crossorigin="anonymous"
+  ></script>
+</html>
